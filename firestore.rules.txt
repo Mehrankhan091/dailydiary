@@ -1,0 +1,116 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    // Allow reading usernames without authentication for availability checking
+    match /userProfiles/{userId} {
+      // Anyone can read usernames for checking availability during signup
+      allow read: if true;
+      
+      // Only the owner can write to their profile
+      allow write: if isOwner(userId);
+      
+      // Allow creating a new profile if the user is authenticated and the UID matches
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      
+      // Allow updating stats by anyone (for likes, follows, etc.)
+      allow update: if isSignedIn();
+    }
+    
+    // Diaries rules
+    match /diaries/{diaryId} {
+      // Allow reading public diaries or your own diaries
+      allow read: if isSignedIn() && 
+                  (resource.data.userId == request.auth.uid || 
+                   resource.data.isPrivate == false);
+      
+      // Allow writing only to your own diaries
+      allow create, delete: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      
+      // Allow updating any diary (for like counts, comment counts, etc.)
+      allow update: if isSignedIn();
+    }
+    
+    // Diary videos rules
+    match /diaryVideos/{videoId} {
+      // Allow reading videos from public diaries or your own diaries
+      allow read: if isSignedIn();
+      
+      // Allow creating and deleting only your own videos
+      allow create, delete: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      
+      // Allow updating any video (for like counts, comment counts, etc.)
+      allow update: if isSignedIn();
+    }
+    
+    // Social features
+    
+    // Likes
+    match /likes/{likeId} {
+      // Anyone signed in can read likes
+      allow read: if isSignedIn();
+      
+      // Anyone signed in can create likes
+      allow create: if isSignedIn();
+      
+      // Only the creator can delete their like
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    
+    // Comments
+    match /comments/{commentId} {
+      // Anyone signed in can read comments
+      allow read: if isSignedIn();
+      
+      // Anyone signed in can create comments
+      allow create: if isSignedIn();
+      
+      // Only the comment creator can update or delete their comment
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    
+    // Follows
+    match /follows/{followId} {
+      // Anyone signed in can read follows
+      allow read: if isSignedIn();
+      
+      // Anyone signed in can create follows
+      allow create: if isSignedIn();
+      
+      // Only the follower can delete their follow
+      allow delete: if isSignedIn() && resource.data.followerId == request.auth.uid;
+    }
+    
+    // Shares
+    match /shares/{shareId} {
+      // Anyone signed in can read shares
+      allow read: if isSignedIn();
+      
+      // Anyone signed in can create shares
+      allow create: if isSignedIn();
+    }
+    
+    // Notifications
+    match /notifications/{notificationId} {
+      // Allow users to read their own notifications
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      // Allow creating notifications for any signed-in user
+      allow create: if isSignedIn();
+      
+      // Allow updating notifications (e.g., marking as read) if you're the recipient
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      // Allow deleting your own notifications
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+  }
+}
