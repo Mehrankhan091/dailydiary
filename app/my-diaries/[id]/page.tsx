@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, use } from "react"
 import { useRouter } from "next/navigation"
 import ProtectedRoute from "@/components/protected-route"
 import { Sidebar } from "@/components/sidebar"
@@ -14,16 +14,19 @@ import type { Diary } from "@/models/diary"
 import Link from "next/link"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
-export default function DiaryPage({ params }: { params: { id: string } }) {
+export default function DiaryPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const [diary, setDiary] = useState<Diary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Properly unwrap the params promise
+  const { id: diaryId } = use(params)
+
   useEffect(() => {
     async function fetchDiary() {
       try {
-        const diaryDoc = await getDoc(doc(db, "diaries", params.id))
+        const diaryDoc = await getDoc(doc(db, "diaries", diaryId))
 
         if (diaryDoc.exists()) {
           setDiary({ id: diaryDoc.id, ...diaryDoc.data() } as Diary)
@@ -37,7 +40,7 @@ export default function DiaryPage({ params }: { params: { id: string } }) {
         // Try to get from localStorage
         try {
           const localDiaries = JSON.parse(localStorage.getItem("diaries") || "[]")
-          const localDiary = localDiaries.find((d: Diary) => d.id === params.id)
+          const localDiary = localDiaries.find((d: Diary) => d.id === diaryId)
           if (localDiary) {
             setDiary(localDiary)
           } else {
@@ -53,8 +56,9 @@ export default function DiaryPage({ params }: { params: { id: string } }) {
     }
 
     fetchDiary()
-  }, [params.id, router])
+  }, [diaryId, router])
 
+  // Rest of your component remains the same...
   if (loading) {
     return (
       <ProtectedRoute>
@@ -151,7 +155,7 @@ export default function DiaryPage({ params }: { params: { id: string } }) {
                   variant="outline"
                   size="sm"
                   className="bg-white/80 hover:bg-white"
-                  onClick={() => router.push(`/my-diaries/${params.id}/edit`)}
+                  onClick={() => router.push(`/my-diaries/${diaryId}/edit`)}
                 >
                   <Edit className="h-4 w-4 mr-2" />
                   Edit
@@ -166,7 +170,7 @@ export default function DiaryPage({ params }: { params: { id: string } }) {
 
             {/* Diary Content */}
             <div className="max-w-4xl mx-auto p-6">
-              <VideoList diaryId={params.id} />
+              <VideoList diaryId={diaryId} />
             </div>
           </main>
         </div>

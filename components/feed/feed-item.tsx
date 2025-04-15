@@ -16,6 +16,7 @@ import type { FeedItem as FeedItemType } from "@/models/social"
 import { ShareModal } from "@/components/feed/share-modal"
 import { CommentsModal } from "@/components/feed/comments-modal"
 import { useAuth } from "@/contexts/auth-context"
+import { cn } from "@/lib/utils"
 
 interface FeedItemProps {
   item: FeedItemType
@@ -26,11 +27,12 @@ export function FeedItem({ item, onUpdate }: FeedItemProps) {
   const router = useRouter()
   const { user } = useAuth()
   const { toggleLike, toggleFollow, checkLikeStatus, checkFollowStatus } = useSocialInteractions()
-  const [liked, setLiked] = useState(item.userHasLiked || false)
+  const [isLiked, setIsLiked] = useState(item.userHasLiked || false)
   const [likeCount, setLikeCount] = useState(item.likeCount || 0)
   const [following, setFollowing] = useState(item.userIsFollowing || false)
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
   // Check initial like and follow status
@@ -39,47 +41,60 @@ export function FeedItem({ item, onUpdate }: FeedItemProps) {
       if (user && item.id) {
         try {
           const isLiked = await checkLikeStatus(item.id, item.type)
-          setLiked(isLiked)
-
-          if (item.userId && item.userId !== user.uid) {
-            const isFollowing = await checkFollowStatus(item.userId)
-            setFollowing(isFollowing)
-          }
+          setIsLiked(isLiked)
         } catch (error) {
-          console.error("Error checking initial status:", error)
+          console.error("Error checking initial like status:", error)
         }
       }
     }
 
     checkInitialStatus()
-  }, [user, item.id, item.type, item.userId, checkLikeStatus, checkFollowStatus])
+  }, [user, item.id, item.type, checkLikeStatus])
 
   // Handle like button click
   const handleLike = async () => {
     if (isLoading) return
 
     setIsLoading(true)
+    // Optimistically update the UI
+    const newLikeStatus = !isLiked
+    setIsLiked(newLikeStatus)
+    setLikeCount((prev) => (newLikeStatus ? prev + 1 : prev - 1))
+
     try {
       const result = await toggleLike(item.id, item.type)
 
-      if (result !== null) {
-        setLiked(result)
-        setLikeCount((prev) => (result ? prev + 1 : prev - 1))
-
-        if (onUpdate) {
-          onUpdate({
-            ...item,
-            userHasLiked: result,
-            likeCount: result ? (item.likeCount || 0) + 1 : (item.likeCount || 0) - 1,
-          })
-        }
+      if (result === null) {
+        // Rollback if the request fails
+        setIsLiked(!newLikeStatus)
+        setLikeCount((prev) => (newLikeStatus ? prev - 1 : prev + 1))
+        console.error("Error updating like:")
       }
     } catch (error) {
+      // Rollback if the request fails
+      setIsLiked(!newLikeStatus)
+      setLikeCount((prev) => (newLikeStatus ? prev - 1 : prev + 1))
       console.error("Error toggling like:", error)
     } finally {
       setIsLoading(false)
     }
   }
+
+  // Check initial follow status
+  useEffect(() => {
+    const checkInitialFollowStatus = async () => {
+      if (user && item.userId && item.userId !== user.uid) {
+        try {
+          const isFollowing = await checkFollowStatus(item.userId)
+          setFollowing(isFollowing)
+        } catch (error) {
+          console.error("Error checking initial follow status:", error)
+        }
+      }
+    }
+
+    checkInitialFollowStatus()
+  }, [user, item.userId, checkFollowStatus])
 
   // Handle follow button click
   const handleFollow = async () => {
@@ -247,10 +262,10 @@ export function FeedItem({ item, onUpdate }: FeedItemProps) {
           variant="ghost"
           size="sm"
           onClick={handleLike}
-          className={`flex items-center ${liked ? "text-blue-500" : ""}`}
+          className={cn("flex items-center", isLiked ? "text-blue-500" : "")}
           disabled={isLoading}
         >
-          <Heart className={`h-5 w-5 mr-1 ${liked ? "fill-current" : ""}`} />
+          <Heart className={cn("h-5 w-5 mr-1", isLiked ? "fill-current" : "")} />
           <span>{likeCount}</span>
         </Button>
 
